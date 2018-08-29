@@ -7,22 +7,43 @@ from torch import optim
 from matplotlib import pyplot as plt
 
 class DynamicModel(nn.Module):
-    def __init__(self,state_size, action_size, hidden_size):
+    def __init__(self,x_size, u_size, y_size):
+        """
+            x_size system hidden state
+            u_size system inputs
+            y_size system output or measurement
+        """
         super(DynamicModel,self).__init__()
-        self.hidden_size = hidden_size
+        self.x_size = x_size
 
-        self.i2h = nn.Linear(state_size + action_size + hidden_size, hidden_size)
-        self.h2o = nn.Linear(hidden_size, state_size)
+        self.predict_y = nn.Linear(x_size + u_size, y_size, bias=False)
+        self.predict_x = nn.Linear(x_size + u_size + y_size, x_size, bias=False)
 
-    def forward(self,state,action,hidden):
+        self.x = None
 
-        combined = torch.cat((state,action,hidden),dim=-1)
-        # print(combined.shape)
+    def forward(self,u,y,use_error):
+        if self.x is None:
+            if len(u.shape)>1:
+                batch_size = u.shape[0]
+                self.x = torch.zeros((batch_size,self.x_size))
+            else:
+                self.x = torch.zeros(self.x_size)
 
-        hidden = torch.clamp(self.i2h(combined),-1000,1000)
-        next_state = self.h2o(hidden)
 
-        return hidden, next_state
+        y_hat = self.predict_y( torch.cat((self.x,u),dim=-1))
+        y_hat = torch.clamp(y_hat,-1000,1000)
+
+        if use_error:
+            error = y_hat - y
+        else:
+            error = torch.zeros(y.shape)
+        self.x = self.predict_x( torch.cat((self.x,u,error),dim=-1))
+        self.x = torch.clamp(self.x,-1000,1000)
+
+        return y_hat
+
+    def zero_x(self):
+        self.x = None
 
 
 
@@ -30,37 +51,33 @@ class DynamicModel(nn.Module):
 if __name__ == "__main__":
     print("Hello There")
 
-    dynamic_dataset = DynamicDataset(10000,seq_len=50)
-    batch_size = 10
+    dynamic_dataset = DynamicDataset(10000,seq_len=500)
+    batch_size = 20
     train_loader = DataLoader(dynamic_dataset, batch_size=batch_size, num_workers=4)
 
-    n_hidden = 1
-    model = DynamicModel(1,1,n_hidden)
+    model = DynamicModel(x_size = 5, u_size = 1, y_size = 1)
     model.train()
 
 
     criterion = nn.MSELoss()
-    optimizer = optim.SGD(model.parameters(), lr = 0.01)#, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr = 0.001, momentum=0.9)
 
     #for each batch
     for i_batch, sample_batch in enumerate(train_loader):
-        states = sample_batch["states"]
-        next_states = sample_batch["next_states"]
-        actions = sample_batch["actions"]
+        Y = sample_batch["states"]
+        U = sample_batch["actions"]
 
-        hidden = torch.zeros((batch_size,n_hidden))
         model.zero_grad()
-
+        model.zero_x()
         loss_sum = torch.zeros(1)
 
-        seq_len = states.shape[1]
+        seq_len = Y.shape[1]
         #unroll sequence
         for i in range(seq_len):
-            state = states[:,i,:]
-            next_state = next_states[:,i,:]
-            action = actions[:,i,:]
+            y = Y[:,i,:]
+            u = U[:,i,:]
 
-            hidden,estimated_next_state = model(state,action,hidden)
+            y_hat = model(u,y,use_error=True)
 
             # if i < 100:
             #     hidden,estimated_next_state = model(state,action,hidden)
@@ -68,14 +85,14 @@ if __name__ == "__main__":
             #     hidden,estimated_next_state = model(estimated_next_state,action,hidden)
 
             # if i > seq_len/2 or True:
-            loss = criterion(estimated_next_state,next_state)
+            loss = criterion(y_hat,y)
             # print(estimated_next_state,next_state)
             # print(loss)
             loss_sum += loss
 
         loss_sum /= i
         loss_sum.backward()
-        print("Loss: " + str(loss_sum))
+        print("Loss: %f" % float(loss_sum.data.numpy()))
         # for p in model.parameters():
         #     print(p.grad.data)
         torch.nn.utils.clip_grad_norm_(model.parameters(),500)
@@ -91,27 +108,27 @@ if __name__ == "__main__":
     # plt.plot(test_out)
     # plt.show()
 
-    print(model.i2h.weight)
-    print(model.i2h.bias)
+    print(model.predict_x.weight)
+    print(model.predict_x.bias)
 
-    hidden = torch.zeros((n_hidden))
+
     loss_array = []
     out_array = []
+    model.zero_x()
     for i in range(seq_len):
-        state = states[0,i,:]
-        next_state = next_states[0,i,:]
-        action = actions[0,i,:]
-        # print(state)
-        if i < seq_len/2:
-            hidden,estimated_next_state = model(state,action,hidden)
-        else:
-            hidden,estimated_next_state = model(estimated_next_state,action,hidden)
-        out_array.append(estimated_next_state.data.numpy())
+        y = Y[0,i,:]
+        u = U[0,i,:]
 
-        loss = criterion(estimated_next_state,next_state)
+        if i < seq_len/2:
+            y_hat = model(u,y,use_error=True)
+        else:
+            y_hat = model(u,y,use_error=False)
+        out_array.append(y_hat.data.numpy())
+
+        loss = criterion(y_hat,y)
         loss_array.append(loss.data.numpy())
     plt.plot(out_array)
-    # plt.plot(states[0,:,0].numpy())
-    # plt.plot(actions[0,:,0].numpy())
+    plt.plot(Y[0,:,0].numpy())
+    plt.plot(U[0,:,0].numpy())
 
     plt.show()

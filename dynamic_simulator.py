@@ -17,10 +17,10 @@ class SpringMass():
 
         dt = 0.1
         mass = 1.0
-        spring_k = 10.0
-        damper_c = 1.0
+        spring_k = 20.0
+        damper_c = 2.0
         self.A = np.array([[0,1],[-spring_k/mass, -damper_c/mass]])
-        self.B = np.array([[0,1.0/mass]]).T
+        self.B = np.array([[0,5.0/mass]]).T
         # print(self.A)
         self.A = np.eye(2) + self.A*dt
         self.B = self.B*dt
