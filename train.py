@@ -18,9 +18,10 @@ class DynamicModel(nn.Module):
 
         combined = torch.cat((state,action,hidden),dim=-1)
         # print(combined.shape)
-        hidden = torch.clamp(self.i2h(combined),-1000,1000)
 
+        hidden = torch.clamp(self.i2h(combined),-1000,1000)
         next_state = self.h2o(hidden)
+
         return hidden, next_state
 
 
@@ -29,17 +30,17 @@ class DynamicModel(nn.Module):
 if __name__ == "__main__":
     print("Hello There")
 
-    dynamic_dataset = DynamicDataset(6000,seq_len=50)
-    batch_size = 20
+    dynamic_dataset = DynamicDataset(10000,seq_len=50)
+    batch_size = 10
     train_loader = DataLoader(dynamic_dataset, batch_size=batch_size, num_workers=4)
 
-    n_hidden = 5
+    n_hidden = 1
     model = DynamicModel(1,1,n_hidden)
     model.train()
 
 
     criterion = nn.MSELoss()
-    optimizer = optim.SGD(model.parameters(), lr = 0.00001)#, momentum=0.9)
+    optimizer = optim.SGD(model.parameters(), lr = 0.01)#, momentum=0.9)
 
     #for each batch
     for i_batch, sample_batch in enumerate(train_loader):
@@ -59,18 +60,20 @@ if __name__ == "__main__":
             next_state = next_states[:,i,:]
             action = actions[:,i,:]
 
-            if i < 100:
-                hidden,estimated_next_state = model(state,action,hidden)
-            else:
-                hidden,estimated_next_state = model(estimated_next_state,action,hidden)
+            hidden,estimated_next_state = model(state,action,hidden)
 
-            if i > seq_len/2 or True:
-                loss = criterion(estimated_next_state,next_state)
-                # print(estimated_next_state,next_state)
-                # print(loss)
-                loss_sum += loss
+            # if i < 100:
+            #     hidden,estimated_next_state = model(state,action,hidden)
+            # else:
+            #     hidden,estimated_next_state = model(estimated_next_state,action,hidden)
 
-        loss_sum /= i/2
+            # if i > seq_len/2 or True:
+            loss = criterion(estimated_next_state,next_state)
+            # print(estimated_next_state,next_state)
+            # print(loss)
+            loss_sum += loss
+
+        loss_sum /= i
         loss_sum.backward()
         print("Loss: " + str(loss_sum))
         # for p in model.parameters():
@@ -79,7 +82,7 @@ if __name__ == "__main__":
         # for p in model.parameters():
         #     print(p.grad.data)
         optimizer.step()
-        # raw_input("sadf")
+        # raw_input("press any key\n")
 
     # test_out = []
     # for i in range(1000):
@@ -108,7 +111,7 @@ if __name__ == "__main__":
         loss = criterion(estimated_next_state,next_state)
         loss_array.append(loss.data.numpy())
     plt.plot(out_array)
-    plt.plot(states[0,:,0].numpy())
-    plt.plot(actions[0,:,0].numpy())
+    # plt.plot(states[0,:,0].numpy())
+    # plt.plot(actions[0,:,0].numpy())
 
     plt.show()

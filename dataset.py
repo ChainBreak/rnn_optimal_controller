@@ -18,18 +18,18 @@ class DynamicDataset():
         states = torch.zeros([self.seq_len, sm.states])
         next_states = torch.zeros([self.seq_len, sm.states])
 
-        sm.pos = random.uniform(8.0,12.0)
-        sm.spd = random.uniform(-1.0,1.0)
-
+        pos = random.uniform(-2.0,2.0)
+        spd = random.uniform(-1.0,1.0)
+        sm.set_x(pos,spd)
 
         wave_len = random.uniform(40,60)
         phase = random.uniform(-math.pi, math.pi)
-        mag = random.uniform(0.5,1.0)
+        mag = random.uniform(1,20.0)
 
         for i in range(self.seq_len):
             force = math.sin(float(i)/wave_len*2*math.pi + phase)*mag
 
-            states[i,0] = sm.pos
+            states[i,0] = float(sm.x[0])
             actions[i,0] = force
             next_states[i,0] = sm.update(force)
 
